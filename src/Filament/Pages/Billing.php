@@ -8,10 +8,11 @@ use Filament\Actions\Contracts\HasActions;
 use Filament\Facades\Filament;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
-use Filament\Pages\SimplePage;
 use Filament\Pages\Concerns;
 use Filament\Panel;
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
@@ -66,45 +67,41 @@ class Billing extends Page implements HasActions
 
     protected static string $view = 'filament-subscriptions::pages.billing';
 
+    public Authenticatable $user;
+    public Collection $plans;
+    public ?Subscription $currentSubscription;
+    public string $currentPanel;
 
-    public $user;
-    public $plans;
-    public $currentSubscription;
-    public $currentPanel;
-
-    public function mount()
+    public function mount(): ?RedirectResponse
     {
         $this->user = Filament::auth()->getUser();
         $this->plans = Plan::where('is_active', true)->orderBy('sort_order', 'asc')->get();
         $this->currentSubscription = $this->user->planSubscriptions()->first();
         $this->currentPanel = Filament::getCurrentPanel()->getId();
 
-        if(!$this->currentSubscription){
-            $mainPlan = Plan::query()->where('slug', 'main')->first();
-            if($mainPlan){
-                $this->subscribe($mainPlan->id, true);
-            }
-            else {
-                $mainPlan = new Plan();
-                $mainPlan->name = 'Main';
-                $mainPlan->slug = 'main';
-                $mainPlan->price = 0;
-                $mainPlan->currency = 'USD';
-                $mainPlan->is_active = true;
-                $mainPlan->trial_period = 1264;
-                $mainPlan->trial_interval = 'year';
-                $mainPlan->save();
-
-                $this->subscribe($mainPlan->id, true);
-            }
-
-            Notification::make()
-                ->title(trans('filament-subscriptions::messages.notifications.subscription.title'))
-                ->body(trans('filament-subscriptions::messages.notifications.subscription.message'))
-                ->success()
-                ->send();
-            return redirect()->to($this->currentPanel);
+        if($this->currentSubscription){
+            return null;
         }
+
+        $mainPlan = Plan::query()
+            ->where('slug', 'main')
+            ->firstOrCreate([
+                'name' => 'Main',
+                'slug' => 'main',
+                'price' => 0,
+                'currency' => 'USD',
+                'is_active' => true,
+                'trial_period' => 1264,
+                'trial_interval' => 'year',
+            ]);
+
+        $this->subscribe($mainPlan->id, true);
+
+        return $this->handeNotificationWithRedirectToPanel(
+            __('filament-subscriptions::messages.notifications.subscription.title'),
+            __('filament-subscriptions::messages.notifications.subscription.message'),
+            'success',
+        );
     }
 
     public function changePlanAction(?Plan $plan=null): Action
@@ -136,7 +133,7 @@ class Billing extends Page implements HasActions
             });
     }
 
-    public function cancelPlanAction()
+    public function cancelPlanAction(): Action
     {
         return Action::make('cancelPlanAction')
             ->requiresConfirmation()
@@ -149,12 +146,11 @@ class Billing extends Page implements HasActions
     public function subscribe(int $plan, bool $main = false)
     {
         if (!$plan) {
-            Notification::make()
-                ->title(trans('filament-subscriptions::messages.notifications.invalid.title'))
-                ->body(trans('filament-subscriptions::messages.notifications.invalid.message'))
-                ->danger()
-                ->send();
-            return redirect()->to($this->currentPanel);
+            $this->handeNotificationWithRedirectToPanel(
+                __('filament-subscriptions::messages.notifications.invalid.title'),
+                __('filament-subscriptions::messages.notifications.invalid.message'),
+                'danger',
+            );
         }
 
         $plan = Plan::find($plan);
@@ -162,12 +158,10 @@ class Billing extends Page implements HasActions
         if ($this->currentSubscription) {
             if ($this->currentSubscription->plan_id === $plan->id) {
                 if ($this->currentSubscription->active()) {
-                    Notification::make()
-                        ->title(trans('filament-subscriptions::messages.notifications.info.title'))
-                        ->body(trans('filament-subscriptions::messages.notifications.info.message'))
-                        ->info()
-                        ->send();
-                    return redirect()->to($this->currentPanel);
+                    return $this->handeNotificationWithRedirectToPanel(
+                        __('filament-subscriptions::messages.notifications.info.title'),
+                        __('filament-subscriptions::messages.notifications.info.message'),
+                    );
                 }
 
                 $this->currentSubscription->canceled_at =  Carbon::parse($this->currentSubscription->cancels_at)->addDays(1);
@@ -189,16 +183,12 @@ class Billing extends Page implements HasActions
                         "subscription" => $this->currentSubscription
                     ]);
                 }
-                else {
-                    Notification::make()
-                        ->title(trans('filament-subscriptions::messages.notifications.renew.title'))
-                        ->body(trans('filament-subscriptions::messages.notifications.renew.message'))
-                        ->success()
-                        ->send();
 
-                    return redirect()->to($this->currentPanel);
-                }
-
+                return $this->handeNotificationWithRedirectToPanel(
+                    __('filament-subscriptions::messages.notifications.renew.title'),
+                    __('filament-subscriptions::messages.notifications.renew.message'),
+                    'success',
+                );
             }
 
             Event::dispatch(new ChangePlan([
@@ -216,14 +206,12 @@ class Billing extends Page implements HasActions
                     "subscription" => $this->currentSubscription
                 ]);
             }
-            else {
-                Notification::make()
-                    ->title(trans('filament-subscriptions::messages.notifications.change.title'))
-                    ->body(trans('filament-subscriptions::messages.notifications.change.message'))
-                    ->success()
-                    ->send();
-                return redirect()->to($this->currentPanel);
-            }
+
+            return $this->handeNotificationWithRedirectToPanel(
+                __('filament-subscriptions::messages.notifications.change.title'),
+                __('filament-subscriptions::messages.notifications.change.message'),
+                'success',
+            );
         }
 
         // No current subscription
@@ -242,29 +230,24 @@ class Billing extends Page implements HasActions
                 "subscription" => $this->user->planSubscriptions()->first()
             ]);
         }
-        else {
-            Notification::make()
-                ->title(trans('filament-subscriptions::messages.notifications.subscription.title'))
-                ->body(trans('filament-subscriptions::messages.notifications.subscription.message'))
-                ->success()
-                ->send();
-            return redirect()->to($this->currentPanel);
-        }
 
+        return $this->handeNotificationWithRedirectToPanel(
+            __('filament-subscriptions::messages.notifications.subscription.title'),
+            __('filament-subscriptions::messages.notifications.subscription.message'),
+            'success',
+        );
     }
 
     public function cancel()
     {
         $activeSubscriptions = $this->user->activePlanSubscriptions();
 
-
         if ($activeSubscriptions->isEmpty()) {
-            Notification::make()
-                ->title(trans('filament-subscriptions::messages.notifications.no_active.title'))
-                ->body(trans('filament-subscriptions::messages.notifications.no_active.message'))
-                ->danger()
-                ->send();
-            return redirect()->to($this->currentPanel);
+            return $this->handeNotificationWithRedirectToPanel(
+                __('filament-subscriptions::messages.notifications.no_active.title'),
+                __('filament-subscriptions::messages.notifications.no_active.message'),
+                'danger',
+            );
         }
 
         try {
@@ -285,12 +268,11 @@ class Billing extends Page implements HasActions
                 "subscription" => $subscription
             ]);
         } catch (\Exception $e) {
-            Notification::make()
-                ->title(trans('filament-subscriptions::messages.notifications.cancel_invalid.title'))
-                ->body(trans('filament-subscriptions::messages.notifications.cancel_invalid.message'))
-                ->danger()
-                ->send();
-            return redirect()->to($this->currentPanel);
+            return $this->handeNotificationWithRedirectToPanel(
+                __('filament-subscriptions::messages.notifications.cancel_invalid.title'),
+                __('filament-subscriptions::messages.notifications.cancel_invalid.message'),
+                'danger',
+            );
         }
     }
 
@@ -312,5 +294,19 @@ class Billing extends Page implements HasActions
         }
 
         return __('filament-subscriptions::messages.view.change_subscription');
+    }
+
+    private function handeNotificationWithRedirectToPanel(
+        string $title,
+        string $body,
+        string $status = 'info',
+    ): RedirectResponse {
+        Notification::make()
+            ->title($title)
+            ->body($body)
+            ->status($status)
+            ->send();
+
+        return redirect()->to($this->currentPanel);
     }
 }

@@ -48,7 +48,12 @@ class Billing extends Page implements HasActions
 
     public static function getRouteName(?string $panel = null): string
     {
-        return ( $panel ? $panel->getId() : Filament::getCurrentPanel()->getId()) ? "filament." . ( $panel ? $panel->getId() : Filament::getCurrentPanel()->getId()) .  ".tenant.billing": 'filament.tenant.billing'; ;
+        $routeName = 'filament';
+        if ($panel !== null) {
+            // we don`t use Filament::getCurrentPanel(), because if `$panel` presented it will be found or throwed exception
+            $routeName .= '.' . Filament::getPanel($panel)->getId();
+        }
+        return $routeName . '.tenant.billing';
     }
 
     protected function getLayoutData(): array
@@ -75,7 +80,9 @@ class Billing extends Page implements HasActions
     public function mount(): ?RedirectResponse
     {
         $this->user = Filament::auth()->getUser();
-        $this->plans = Plan::where('is_active', true)->orderBy('sort_order', 'asc')->get();
+        $this->plans = Plan::where('is_active', true)
+            ->orderBy('sort_order')
+            ->get();
         $this->currentSubscription = $this->user->planSubscriptions()->first();
         $this->currentPanel = Filament::getCurrentPanel()->getId();
 

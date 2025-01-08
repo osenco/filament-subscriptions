@@ -123,7 +123,7 @@ public function panel(Panel $panel): Panel
 
 Users without an active subscription will be redirected to the billing page.
 
-## Register New Subscriper Type
+## Register New Subscriber Type
 
 you can register new subscriber type by using this code
 

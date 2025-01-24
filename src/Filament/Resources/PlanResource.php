@@ -29,7 +29,7 @@ class PlanResource extends Resource
 
     public static function getNavigationGroup(): ?string
     {
-        return trans('filament-subscriptions::messages.group');
+        return config('laravel-subscriptions.navigation.group', trans('filament-subscriptions::messages.group'));
     }
 
     public static function getNavigationLabel(): string

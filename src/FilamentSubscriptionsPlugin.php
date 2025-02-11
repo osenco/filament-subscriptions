@@ -46,7 +46,7 @@ class FilamentSubscriptionsPlugin implements Plugin
         if($this->isActive) {
             $panel
                 ->pages([
-                    Billing::class
+                    config('laravel-subscriptions.pages.billing', Billing::class)
                 ]);
 
             if (!$this->withoutResources) {

@@ -69,7 +69,9 @@ class FilamentSubscriptionsPlugin implements Plugin
                     MenuItem::make()
                         ->label(trans('filament-subscriptions::messages.menu'))
                         ->icon('heroicon-s-credit-card')
-                        ->url(route('filament.' . $panel->getId() . '.tenant.billing'))
+                        ->url(route('filament.' . $panel->getId() . '.tenant.billing',
+                                ['tenant'=> filament()->getTenant()->{filament()->getCurrentPanel()->getTenantSlugAttribute()}]
+                            ))
                 ]);
             }
         }
